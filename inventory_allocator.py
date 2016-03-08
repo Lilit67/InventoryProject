@@ -10,6 +10,8 @@ from collections import OrderedDict
 from optparse import OptionParser
 
 
+queueLock = threading.Lock()
+
 class Inventory(object):
     '''
     Keeps track of inventory
@@ -36,24 +38,24 @@ class Inventory(object):
         3 update order list
         4. halt program if not more inventory
 
-        '''        
+        '''   
+        queueLock.acquire()     
         self.checkToHalt()
 
         self.orders.append(order)
         for product in order.initial.keys():
             
             remainder = self.inventory[product] - order.initial[product]
+
             if  remainder >= 0:
             	self.inventory[product] = remainder
             	order.final[product] = order.initial[product]
 
             else:
-                order.backlog[product] = order.initial[product]
+                order.backlog[product] = order.backlog[product] + order.initial[product]
+        queueLock.release()        
                	        
      
-    @property
-    def IDs(self):
-        return len(self.orders)    
        
 
     def checkToHalt(self):
@@ -61,11 +63,15 @@ class Inventory(object):
         The program should stop 
         once no more inventory
         '''
-        if self.inventory.values() == [0,0,0,0,0]:
-        	print(self.inventory)
-        	print ('HALTING SYSTEM')
-        	self.prettyPrint()
-        	sys.exit(0)
+        values = []
+        for v in self.inventory.values():
+            if v == 0:
+                values.append(v)
+        if values == [0,0,0,0,0]:
+            #print(self.inventory)
+            print ('HALTING SYSTEM')
+            self.prettyPrint()
+            sys.exit(0)
 
 
     def prettyPrint(self):
@@ -167,6 +173,8 @@ def generate(start = 1):
 
 	yield order	
 
+
+
 def main():
     '''
     Reads inventory from input file
@@ -206,7 +214,7 @@ def main():
                         default = 1)
         (opts, args) = parser.parse_args()
 
-        print (opts)
+        #print (opts)
     
         # Read the initial inventory 
         with open(opts.inventory) as f:
@@ -225,8 +233,8 @@ def main():
         if opts.random:
 
             header = 1
-            #print "RANDOM"
-            while  header < 10:      # TODO: change to True
+            while True:
+            #while  header < 10:      # TODO: change to True
                 order_generator = generate(header)
                 next_line = next(order_generator)
                 stream = random.choice(range(1, opts.streams+1))
@@ -239,7 +247,7 @@ def main():
 
         
 
-        
+        # for testing only, no multithreading for now
         else:
             infofile = opts.orders
             with open(infofile) as f:
@@ -253,7 +261,7 @@ def main():
                     valid = Order.validate(l)
                     if valid:
                         o = Order(valid, infofile)      # TODO: validate info as well
-                        invent.place(o)
+                        invent.place(o, opts.streams)
         
         invent.prettyPrint()            
 
