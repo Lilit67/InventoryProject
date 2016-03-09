@@ -1,23 +1,26 @@
 #!/usr/bin/python
 
 import sys
-import multiprocessing
+#import multiprocessing
 import threading
+#import Queue
 import traceback
 import json
 import random
+import logging
 from collections import OrderedDict
 from optparse import OptionParser
 
 
-queueLock = threading.Lock()
+threadLock = threading.Lock()
+logging.basicConfig(filename='debug.log', filemode='w', level=logging.DEBUG)
 
 class Inventory(object):
     '''
     Keeps track of inventory
     Keeps track of order history
     releases inventory
-    sends signal to halt system
+    halts system
     prints out order history
     '''
     
@@ -36,42 +39,44 @@ class Inventory(object):
         1. release inventory per each product type
         2. if not available, backlog
         3 update order list
-        4. halt program if not more inventory
+        4. halt program if no more inventory
 
         '''   
-        queueLock.acquire()     
-        self.checkToHalt()
+        with threadLock:    
+            if self.checkToHalt():   
+                return True
+            logging.debug('Thread No: ' + str(stream))
+            self.orders.append(order)
+            for product in order.initial.keys():           
+                remainder = self.inventory[product] - order.initial[product]
 
-        self.orders.append(order)
-        for product in order.initial.keys():
-            
-            remainder = self.inventory[product] - order.initial[product]
+                if  remainder >= 0:
+            	    self.inventory[product] = remainder
+            	    order.final[product] = order.initial[product]
 
-            if  remainder >= 0:
-            	self.inventory[product] = remainder
-            	order.final[product] = order.initial[product]
-
-            else:
-                order.backlog[product] = order.backlog[product] + order.initial[product]
-        queueLock.release()        
+                else:
+                    order.backlog[product] = order.backlog[product] + order.initial[product]        
                	        
      
        
 
     def checkToHalt(self):
-        '''
-        The program should stop 
-        once no more inventory
-        '''
-        values = []
-        for v in self.inventory.values():
-            if v == 0:
-                values.append(v)
-        if values == [0,0,0,0,0]:
-            #print(self.inventory)
-            print ('HALTING SYSTEM')
-            self.prettyPrint()
-            sys.exit(0)
+            '''
+            The program should stop 
+            once no more inventory
+            '''
+        #with threadLock:
+            print(self.inventory)
+            values = []
+            for v in self.inventory.values():
+                if v == 0:
+                    values.append(v)
+            if values == [0,0,0,0,0]:
+                
+                print ('HALTING SYSTEM')
+                #self.prettyPrint()
+                return True
+            return False    
 
 
     def prettyPrint(self):
@@ -90,20 +95,16 @@ class Order(object):
         verify before initialising
         
         '''
-
         self.header = order['Header']
         self.strm = stream
-
         # initialize this manually so that we do not have reference to same structure
         self.products = ['A', 'B', 'C', 'D', 'E']
         self.initial  = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0}
         self.final    = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0}
         self.backlog  = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0}   
 
-        #print(order)
         for l in order['Lines'].keys():
-        	
-        	self.initial[l] = int(order['Lines'][l])
+           	self.initial[l] = int(order['Lines'][l])
 
            
 
@@ -130,7 +131,7 @@ class Order(object):
 
     	
     @staticmethod
-    def validate(ord):
+    def validate(ordr):
         '''
         @input: raw order line, dict
         @ output: verified order,
@@ -139,31 +140,51 @@ class Order(object):
         order = OrderedDict()
         order['Header'] = 0
         order['Lines'] = OrderedDict()
-        if not isinstance(ord, dict):
+        if not isinstance(ordr, dict):
         	return order
         
-        # It is not clear if the order number should come 
-        # from outside or allocated, but anyways
-        order['Header'] = ord['Header']
+        order['Header'] = ordr['Header']
 
-        if not 'Lines' in ord:
+        if not 'Lines' in ordr:
         	print('Malformed order description, missing entry: "Lines"')
         	return order
 
-        for i in ord['Lines'].keys():
+        for i in ordr['Lines'].keys():
             if i not in ['A','B', 'C', 'D', 'E']:
-        	    #raise Exception('Incorrect product type ' + str(i))
-        	    #del ord[i]
         	    print('Incorrect product name in input # ' + str(i['Header']) + ' ' + str(i))
-            elif int(ord['Lines'][i]) <=0 or int(ord['Lines'][i]) > 5:
-                #raise Exception('Incorrect order value for product ' + str(i) + '  ' + str(products[i]) )
-                print('Incorrect order value for product ' + str(i) + '  ' + str(ord['Lines'][i]) )
+            elif int(ordr['Lines'][i]) <=0 or int(ordr['Lines'][i]) > 5:
+                print('Incorrect order value for product ' + str(i) + '  ' + str(ordr['Lines'][i]) )
             else:
-            	order['Lines'][i] = int(ord['Lines'][i])
+            	order['Lines'][i] = int(ordr['Lines'][i])
         return order	
 
 
-# Helper
+class Stream(threading.Thread):
+    def __init__(self, TID, name, inventory):
+        threading.Thread.__init__(self)
+        self.threadID = TID
+        self.name = name
+        #self.q = q
+        self.header = 1
+        self.inventory = inventory
+
+
+    def run(self):
+        '''
+        
+        '''
+        #threadLock.acquire()
+        while True:
+            order_generator = generate(self.header)
+            next_line = next(order_generator)
+            next_order = Order(next_line, self.name) 
+            stop = self.inventory.place(next_order, self.name)
+            self.header += 1  
+            if stop:
+                break 
+        #threaLock.release()            
+
+# Helpers
 def generate(start = 1):
 
 	order = {'Header': start, 'Lines': {} }
@@ -173,30 +194,13 @@ def generate(start = 1):
 
 	yield order	
 
-
-
-def main():
-    '''
-    Reads inventory from input file
-    Reads order requests from input stream(s)
-    Allocates inventory on first come first serve basis
-
-    '''
-    #inventory1 = {'A': 150, 'B': 150, 'C': 100, 'D': 100, 'E': 200}
-    #inventory2 = {'A': 2, 'B': 3, 'C': 1, 'D': 0, 'E': 0}
- 
-    try:
-        # lets do it from file
-        #infofile = './test1.txt'
-
-        #invent = Inventory(inventory1)
-
+def getArgs():
         parser = OptionParser()
         parser.add_option('--inventory', 
-        	            dest = 'inventory', 
-        	            type = 'string',
-        	            help = "Enter the inventory file path",
-        	            default = './inv_small.txt')
+                        dest = 'inventory', 
+                        type = 'string',
+                        help = "Enter the inventory file path",
+                        default = './inv_small.txt')
         parser.add_option('--orders', 
                         dest = 'orders', 
                         type = 'string',
@@ -214,6 +218,19 @@ def main():
                         default = 1)
         (opts, args) = parser.parse_args()
 
+        return opts, args
+
+
+def main():
+    '''
+    Reads inventory from input file
+    Reads order requests from input stream(s)
+    Allocates inventory on first come first serve basis
+
+    ''' 
+    try:
+ 
+        (opts, args) = getArgs() 
         #print (opts)
     
         # Read the initial inventory 
@@ -231,7 +248,7 @@ def main():
         # If random, generate the orders at random
         # System will stop when no inventory is left
         if opts.random:
-
+            '''
             header = 1
             while True:
             #while  header < 10:      # TODO: change to True
@@ -243,11 +260,27 @@ def main():
                 next_order = Order(next_line, stream) 
                 invent.place(next_order, stream)
                 header += 1
+            '''
 
+            streams = range(1, opts.streams + 1) 
+            #queue = Queue.Queue(2)
+            threads = []
+            threadID = 1
+
+            # Create Streams
+            for number in streams:
+                thread = Stream('Stream_' + str(number), number, invent)
+                thread.start()
+                threads.append(thread)
+                threadID += 1
+
+
+            for t in threads:
+                t.join()          
 
         
 
-        # for testing only, no multithreading for now
+        # for testing only, no multithreading intended for this case
         else:
             infofile = opts.orders
             with open(infofile) as f:
