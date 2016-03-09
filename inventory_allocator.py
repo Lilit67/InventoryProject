@@ -1,9 +1,7 @@
 #!/usr/bin/python
 
 import sys
-#import multiprocessing
 import threading
-#import Queue
 import traceback
 import json
 import random
@@ -46,6 +44,8 @@ class Inventory(object):
             if self.checkToHalt():   
                 return True
             logging.debug('Thread No: ' + str(stream))
+            logging.debug("Inventory AFTER release of order #" + str(order.header) + ' ' + str(self.inventory))
+            logging.debug("Requested " + str(order.initial))
             self.orders.append(order)
             for product in order.initial.keys():           
                 remainder = self.inventory[product] - order.initial[product]
@@ -56,7 +56,7 @@ class Inventory(object):
 
                 else:
                     order.backlog[product] = order.backlog[product] + order.initial[product]        
-               	        
+            logging.debug("Inventory AFTER release of order #" + str(order.header) + ' ' + str(self.inventory))   	        
      
        
 
@@ -65,15 +65,15 @@ class Inventory(object):
             The program should stop 
             once no more inventory
             '''
-        #with threadLock:
-            print(self.inventory)
+        
+            
             values = []
             for v in self.inventory.values():
                 if v == 0:
                     values.append(v)
             if values == [0,0,0,0,0]:
                 
-                print ('HALTING SYSTEM')
+                logging.debug('HALTING SYSTEM')
                 #self.prettyPrint()
                 return True
             return False    
@@ -92,8 +92,7 @@ class Order(object):
         
     def __init__(self, order, stream):
         '''
-        verify before initialising
-        
+        Construct order line
         '''
         self.header = order['Header']
         self.strm = stream
@@ -141,19 +140,19 @@ class Order(object):
         order['Header'] = 0
         order['Lines'] = OrderedDict()
         if not isinstance(ordr, dict):
-        	return order
+        	return None
         
         order['Header'] = ordr['Header']
 
         if not 'Lines' in ordr:
-        	print('Malformed order description, missing entry: "Lines"')
-        	return order
+        	logging.debug('Malformed order description, missing entry: "Lines"')
+        	return None
 
         for i in ordr['Lines'].keys():
             if i not in ['A','B', 'C', 'D', 'E']:
-        	    print('Incorrect product name in input # ' + str(i['Header']) + ' ' + str(i))
+        	    logging.debug('Incorrect product name in input # ' + str(i['Header']) + ' ' + str(i))
             elif int(ordr['Lines'][i]) <=0 or int(ordr['Lines'][i]) > 5:
-                print('Incorrect order value for product ' + str(i) + '  ' + str(ordr['Lines'][i]) )
+                logging.debug('Incorrect order value for product ' + str(i) + '  ' + str(ordr['Lines'][i]) )
             else:
             	order['Lines'][i] = int(ordr['Lines'][i])
         return order	
@@ -164,7 +163,6 @@ class Stream(threading.Thread):
         threading.Thread.__init__(self)
         self.threadID = TID
         self.name = name
-        #self.q = q
         self.header = 1
         self.inventory = inventory
 
@@ -173,16 +171,15 @@ class Stream(threading.Thread):
         '''
         
         '''
-        #threadLock.acquire()
         while True:
             order_generator = generate(self.header)
             next_line = next(order_generator)
             next_order = Order(next_line, self.name) 
-            stop = self.inventory.place(next_order, self.name)
+            stop = self.inventory.place(next_order, self.threadID)
             self.header += 1  
             if stop:
                 break 
-        #threaLock.release()            
+           
 
 # Helpers
 def generate(start = 1):
@@ -194,31 +191,51 @@ def generate(start = 1):
 
 	yield order	
 
+
 def getArgs():
         parser = OptionParser()
         parser.add_option('--inventory', 
                         dest = 'inventory', 
                         type = 'string',
-                        help = "Enter the inventory file path",
+                        help = "Read inventory from file, default %default",
                         default = './inv_small.txt')
         parser.add_option('--orders', 
                         dest = 'orders', 
                         type = 'string',
-                        help = "Enter the orders file path",
+                        help = "Read orders from path, default %default",
                         default = './test1.txt')
         parser.add_option('--random', 
                         dest = 'random', 
                         action="store_true",
-                        help = "Generate from random stream",
+                        help = "Randomly generate orders, default %default",
                         default = False) 
         parser.add_option('--streams', 
                         dest = 'streams', 
                         type = 'int',
-                        help = "Enter the orders file path",
+                        help = "Number of streams placing orders, default %default",
                         default = 1)
         (opts, args) = parser.parse_args()
 
+        logging.debug('Options passed ' + str(opts))
         return opts, args
+
+
+def getInventory(filepath):
+    '''
+    Read the file for the initial 
+    inventory values.
+    For testsing with different files
+
+    ''' 
+    with open(filepath) as f:
+        lines = filter(None, (line.rstrip() for line in f))
+        for line in lines:
+            if line.startswith('#'):    # comment
+                continue
+            line = line.replace("'", "\"")
+            l = json.loads(line) 
+            break 
+    return l                                  
 
 
 def main():
@@ -231,39 +248,14 @@ def main():
     try:
  
         (opts, args) = getArgs() 
-        #print (opts)
-    
-        # Read the initial inventory 
-        with open(opts.inventory) as f:
-            lines = filter(None, (line.rstrip() for line in f))
-            for line in lines:
-                if line.startswith('#'):    # comment
-                    continue
-                line = line.replace("'", "\"")
-                l = json.loads(line)            # we need only first valid like
-                #print (l)
-                invent = Inventory(l)
-                break               	
+        invent = Inventory(getInventory(opts.inventory))
+
 
         # If random, generate the orders at random
         # System will stop when no inventory is left
         if opts.random:
-            '''
-            header = 1
-            while True:
-            #while  header < 10:      # TODO: change to True
-                order_generator = generate(header)
-                next_line = next(order_generator)
-                stream = random.choice(range(1, opts.streams+1))
-                print(next_line)
-                print(stream)
-                next_order = Order(next_line, stream) 
-                invent.place(next_order, stream)
-                header += 1
-            '''
 
             streams = range(1, opts.streams + 1) 
-            #queue = Queue.Queue(2)
             threads = []
             threadID = 1
 
@@ -274,13 +266,13 @@ def main():
                 threads.append(thread)
                 threadID += 1
 
-
+            # wait unitl all done
             for t in threads:
                 t.join()          
 
         
 
-        # for testing only, no multithreading intended for this case
+        # this option is for simple testing
         else:
             infofile = opts.orders
             with open(infofile) as f:
@@ -298,10 +290,9 @@ def main():
         
         invent.prettyPrint()            
 
-    except Exception:      # proper exception catcing and reporting
-	    traceback.print_exc()
-        #print(data)
-        #sys.exit(-1)
+    except Exception:
+        traceback.print_exc()
+        system.exit(-1)
 
 
 
