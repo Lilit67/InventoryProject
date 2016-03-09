@@ -8,6 +8,7 @@ import random
 import logging
 from collections import OrderedDict
 from optparse import OptionParser
+from queue import Queue
 
 
 threadLock = threading.Lock()
@@ -32,7 +33,7 @@ class Inventory(object):
         self.counter = 0
         
 
-    def place(self, order, stream):
+    def place(self, order, streamID):
         '''
         1. release inventory per each product type
         2. if not available, backlog
@@ -43,9 +44,10 @@ class Inventory(object):
         with threadLock:    
             if self.checkToHalt():   
                 return True
-            logging.debug('Thread No: ' + str(stream))
+            logging.debug('Thread No: ' + str(streamID))
             logging.debug("Inventory AFTER release of order #" + str(order.header) + ' ' + str(self.inventory))
             logging.debug("Requested " + str(order.initial))
+
             self.orders.append(order)
             for product in order.initial.keys():           
                 remainder = self.inventory[product] - order.initial[product]
@@ -55,7 +57,8 @@ class Inventory(object):
             	    order.final[product] = order.initial[product]
 
                 else:
-                    order.backlog[product] = order.backlog[product] + order.initial[product]        
+                    order.backlog[product] = order.backlog[product] + order.initial[product] 
+
             logging.debug("Inventory AFTER release of order #" + str(order.header) + ' ' + str(self.inventory))   	        
      
        
@@ -64,9 +67,7 @@ class Inventory(object):
             '''
             The program should stop 
             once no more inventory
-            '''
-        
-            
+            '''  
             values = []
             for v in self.inventory.values():
                 if v == 0:
@@ -74,7 +75,7 @@ class Inventory(object):
             if values == [0,0,0,0,0]:
                 
                 logging.debug('HALTING SYSTEM')
-                #self.prettyPrint()
+
                 return True
             return False    
 
@@ -110,11 +111,10 @@ class Order(object):
     def prettyPrint(self):
         '''
         @ input
-        @ output: print format, before, afger, backlog:
+        @ output: print format, before, after, backlog:
         1: 1,0,1,0,0::1,0,1,0,0::0,0,0,0,0
         
-        '''
-        
+        '''   
         initial = ''
         final   = ''
         backlog = ''
@@ -169,12 +169,12 @@ class Stream(threading.Thread):
 
     def run(self):
         '''
-        
+        places orders
         '''
         while True:
             order_generator = generate(self.header)
             next_line = next(order_generator)
-            next_order = Order(next_line, self.name) 
+            next_order = Order(next_line, self.threadID) 
             stop = self.inventory.place(next_order, self.threadID)
             self.header += 1  
             if stop:
@@ -183,13 +183,15 @@ class Stream(threading.Thread):
 
 # Helpers
 def generate(start = 1):
+    '''
+    Generate random order line
+    '''
+    order = {'Header': start, 'Lines': {} }
+    for i in ['A', 'B', 'C', 'D', 'E']:
+	    n = random.choice(range(1,6))
+	    order['Lines'][i] = n
 
-	order = {'Header': start, 'Lines': {} }
-	for i in ['A', 'B', 'C', 'D', 'E']:
-		n = random.choice(range(1,6))
-		order['Lines'][i] = n
-
-	yield order	
+    yield order	
 
 
 def getArgs():
@@ -216,7 +218,7 @@ def getArgs():
                         default = 1)
         (opts, args) = parser.parse_args()
 
-        logging.debug('Options passed ' + str(opts))
+        logging.debug('Command-line arguments: ' + str(opts))
         return opts, args
 
 
@@ -254,23 +256,20 @@ def main():
         # If random, generate the orders at random
         # System will stop when no inventory is left
         if opts.random:
-
+            
+            q = Queue()
             streams = range(1, opts.streams + 1) 
             threads = []
-            threadID = 1
 
             # Create Streams
             for number in streams:
                 thread = Stream('Stream_' + str(number), number, invent)
                 thread.start()
                 threads.append(thread)
-                threadID += 1
 
             # wait unitl all done
             for t in threads:
-                t.join()          
-
-        
+                t.join()                 
 
         # this option is for simple testing
         else:
