@@ -1,6 +1,6 @@
 # 
 
-The description is in project_description.txt file
+Usage instructions
 ------------------------------------------------------
 
 
@@ -21,7 +21,18 @@ Options:
   --streams=STREAMS     Number of streams placing orders, default 1
 
 
-  
+
+
+Examples: 
+
+1. do not use input files, generate input
+
+python3 inventory_allocator.py --random
+
+2. input from several stremss
+
+python3 inventory_allocator.py --streams 3 --random
+
 
 
 

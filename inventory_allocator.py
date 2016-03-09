@@ -8,7 +8,7 @@ import random
 import logging
 from collections import OrderedDict
 from optparse import OptionParser
-from queue import Queue
+
 
 
 threadLock = threading.Lock()
@@ -45,7 +45,8 @@ class Inventory(object):
             if self.checkToHalt():   
                 return True
             logging.debug('Thread No: ' + str(streamID))
-            logging.debug("Inventory AFTER release of order #" + str(order.header) + ' ' + str(self.inventory))
+            logging.debug("Inventory AFTER release of order #" + \
+                str(order.header) + ' ' + str(self.inventory))
             logging.debug("Requested " + str(order.initial))
 
             self.orders.append(order)
@@ -57,11 +58,12 @@ class Inventory(object):
             	    order.final[product] = order.initial[product]
 
                 else:
-                    order.backlog[product] = order.backlog[product] + order.initial[product] 
+                    order.backlog[product] = order.backlog[product] + \
+                    order.initial[product] 
 
-            logging.debug("Inventory AFTER release of order #" + str(order.header) + ' ' + str(self.inventory))   	        
-     
-       
+            logging.debug("Inventory AFTER release of order #" + \
+                str(order.header) + ' ' + str(self.inventory))   	        
+           
 
     def checkToHalt(self):
             '''
@@ -97,7 +99,7 @@ class Order(object):
         '''
         self.header = order['Header']
         self.strm = stream
-        # initialize this manually so that we do not have reference to same structure
+    
         self.products = ['A', 'B', 'C', 'D', 'E']
         self.initial  = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0}
         self.final    = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0}
@@ -105,13 +107,12 @@ class Order(object):
 
         for l in order['Lines'].keys():
            	self.initial[l] = int(order['Lines'][l])
-
-           
+          
 
     def prettyPrint(self):
         '''
         @ input
-        @ output: print format, before, after, backlog:
+        @ output: print format- before, after, backlog:
         1: 1,0,1,0,0::1,0,1,0,0::0,0,0,0,0
         
         '''   
@@ -150,9 +151,11 @@ class Order(object):
 
         for i in ordr['Lines'].keys():
             if i not in ['A','B', 'C', 'D', 'E']:
-        	    logging.debug('Incorrect product name in input # ' + str(i['Header']) + ' ' + str(i))
+        	    logging.debug('Incorrect product name in input # ' + \
+                    str(i['Header']) + ' ' + str(i))
             elif int(ordr['Lines'][i]) <=0 or int(ordr['Lines'][i]) > 5:
-                logging.debug('Incorrect order value for product ' + str(i) + '  ' + str(ordr['Lines'][i]) )
+                logging.debug('Incorrect order value for product ' + str(i) + \
+                    '  ' + str(ordr['Lines'][i]) )
             else:
             	order['Lines'][i] = int(ordr['Lines'][i])
         return order	
@@ -169,7 +172,8 @@ class Stream(threading.Thread):
 
     def run(self):
         '''
-        places orders
+        place orders
+        from one stream
         '''
         while True:
             order_generator = generate(self.header)
@@ -195,6 +199,9 @@ def generate(start = 1):
 
 
 def getArgs():
+        '''
+        Parse command line
+        '''
         parser = OptionParser()
         parser.add_option('--inventory', 
                         dest = 'inventory', 
@@ -252,12 +259,10 @@ def main():
         (opts, args) = getArgs() 
         invent = Inventory(getInventory(opts.inventory))
 
-
         # If random, generate the orders at random
         # System will stop when no inventory is left
         if opts.random:
             
-            q = Queue()
             streams = range(1, opts.streams + 1) 
             threads = []
 
@@ -267,7 +272,6 @@ def main():
                 thread.start()
                 threads.append(thread)
 
-            # wait unitl all done
             for t in threads:
                 t.join()                 
 
@@ -278,13 +282,13 @@ def main():
 
                 lines = filter(None, (line.rstrip() for line in f))
                 for line in lines:
-                    if line.startswith('#'):    # comment
+                    if line.startswith('#'): 
                         continue
                     line = line.replace("'", "\"")
                     l = json.loads(line)   
                     valid = Order.validate(l)
                     if valid:
-                        o = Order(valid, infofile)      # TODO: validate info as well
+                        o = Order(valid, infofile)  
                         invent.place(o, opts.streams)
         
         invent.prettyPrint()            
