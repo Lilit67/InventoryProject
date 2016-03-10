@@ -13,6 +13,7 @@ from optparse import OptionParser
 
 threadLock = threading.Lock()
 logging.basicConfig(filename='debug.log', filemode='w', level=logging.DEBUG)
+Products = ['A', 'B', 'C', 'D', 'E']
 
 class Inventory(object):
     '''
@@ -85,7 +86,7 @@ class Inventory(object):
     def prettyPrint(self):
         '''
         Print order history
-        '''        
+        '''       
         for order in self.orders:            
             order.prettyPrint()    
 
@@ -100,10 +101,13 @@ class Order(object):
         self.header = order['Header']
         self.strm = stream
     
-        self.products = ['A', 'B', 'C', 'D', 'E']
+        self.products = Products
         self.initial  = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0}
         self.final    = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0}
         self.backlog  = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0}   
+        #self.initial = OrderedDict.fromkeys('ABCDE', 0)
+        #self.final = OrderedDict.fromkeys('ABCDE', 0)
+        #self.backlog = OrderedDict.fromkeys('ABCDE', 0)
 
         for l in order['Lines'].keys():
            	self.initial[l] = int(order['Lines'][l])
@@ -123,8 +127,8 @@ class Order(object):
             initial = initial + str(self.initial[p]) + ','
             final = final + str(self.final[p]) + ','
             backlog = backlog + str(self.backlog[p]) + ','
-        
-        line = str(self.header) + ': ' + str(initial) + '::' \
+
+        line = str(self.strm) + ': ' + str(self.header) + ': ' + str(initial) + '::' \
             + str(final) + '::' + str(backlog)
         
         print(line)   
