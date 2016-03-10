@@ -295,7 +295,7 @@ def main():
         # this option is only for testing purposes
         # having hard coded input 
         # seems easier to track. 
-        if opts.orders:
+        if len(opts.orders):
             streams = 1
             random = False
             infofile = opts.orders
