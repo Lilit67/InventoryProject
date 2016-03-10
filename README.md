@@ -34,5 +34,11 @@ python3 inventory_allocator.py --random
 python3 inventory_allocator.py --streams 3 --random
 
 
+To run the tests:
+
+python test_inventory_allocator.py
+
+
+
 
 
