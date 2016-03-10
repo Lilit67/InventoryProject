@@ -299,7 +299,7 @@ def main():
 
     except Exception:
         traceback.print_exc()
-        system.exit(-1)
+        sys.exit(-1)
 
 
 
