@@ -105,9 +105,6 @@ class Order(object):
         self.initial  = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0}
         self.final    = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0}
         self.backlog  = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0}   
-        #self.initial = OrderedDict.fromkeys('ABCDE', 0)
-        #self.final = OrderedDict.fromkeys('ABCDE', 0)
-        #self.backlog = OrderedDict.fromkeys('ABCDE', 0)
 
         for l in order['Lines'].keys():
            	self.initial[l] = int(order['Lines'][l])
@@ -187,6 +184,20 @@ class Stream(threading.Thread):
             self.header += 1  
             if stop:
                 break 
+
+    def runOLD(self):
+        '''
+        place orders
+        from one stream
+        '''
+        while True:
+            order_generator = generate(self.header)
+            next_line = next(order_generator)
+            next_order = Order(next_line, self.threadID) 
+            stop = self.inventory.place(next_order, self.threadID)
+            self.header += 1  
+            if stop:
+                break             
            
 
 # Helpers
@@ -216,12 +227,12 @@ def getArgs():
                         dest = 'orders', 
                         type = 'string',
                         help = "Read orders from path, default %default",
-                        default = './test1.txt')
-        parser.add_option('--random', 
-                        dest = 'random', 
-                        action="store_true",
-                        help = "Randomly generate orders, default %default",
-                        default = False) 
+                        default = '')
+        #parser.add_option('--random', 
+        #                dest = 'random', 
+        ##                action="store_true",
+        #                help = "Randomly generate orders, default %default",
+        #                default = True) 
         parser.add_option('--streams', 
                         dest = 'streams', 
                         type = 'int',
@@ -248,7 +259,25 @@ def getInventory(filepath):
             line = line.replace("'", "\"")
             l = json.loads(line) 
             break 
-    return l                                  
+    return l 
+
+
+def getOrdersFromFile(filepath):
+    stream = []
+    with open(filepath) as f:
+
+        lines = filter(None, (line.rstrip() for line in f))
+        for line in lines:
+            if line.startswith('#'): 
+                continue
+            line = line.replace("'", "\"")
+            l = json.loads(line)   
+            valid = Order.validate(l)  
+            if valid:
+                stream.append(valid)
+
+    return stream                                              
+
 
 
 def main():
@@ -263,9 +292,37 @@ def main():
         (opts, args) = getArgs() 
         invent = Inventory(getInventory(opts.inventory))
 
-        # If random, generate the orders at random
-        # System will stop when no inventory is left
-        if opts.random:
+        # this option is only for testing purposes
+        # having hard coded input 
+        # seems easier to track. 
+        if opts.orders:
+            streams = 1
+            random = False
+            infofile = opts.orders
+            with open(infofile) as f:
+
+                lines = filter(None, (line.rstrip() for line in f))
+                for line in lines:
+                    if line.startswith('#'): 
+                        continue
+                    line = line.replace("'", "\"")
+                    l = json.loads(line)   
+                    valid = Order.validate(l)
+                    if valid:
+                        o = Order(valid, infofile)  
+                        invent.place(o, infofile)
+
+        
+        # Multistream option works only with
+        # random stream generations
+        # the idea is to have each stream
+        # to generate its own orders at
+        # any time moment, which will be hard
+        # to satisfy with ready made file input
+        # no much sense to have 10 files if we want 10 streams 
+        # System will stop when no inventory is left 
+
+        else:    
             
             streams = range(1, opts.streams + 1) 
             threads = []
@@ -279,29 +336,13 @@ def main():
             for t in threads:
                 t.join()                 
 
-        # this option is for simple testing
-        else:
-            infofile = opts.orders
-            with open(infofile) as f:
 
-                lines = filter(None, (line.rstrip() for line in f))
-                for line in lines:
-                    if line.startswith('#'): 
-                        continue
-                    line = line.replace("'", "\"")
-                    l = json.loads(line)   
-                    valid = Order.validate(l)
-                    if valid:
-                        o = Order(valid, infofile)  
-                        invent.place(o, opts.streams)
         
         invent.prettyPrint()            
 
     except Exception:
         traceback.print_exc()
         sys.exit(-1)
-
-
 
 
 if __name__ == '__main__':
