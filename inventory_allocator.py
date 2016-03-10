@@ -184,20 +184,6 @@ class Stream(threading.Thread):
             self.header += 1  
             if stop:
                 break 
-
-    def runOLD(self):
-        '''
-        place orders
-        from one stream
-        '''
-        while True:
-            order_generator = generate(self.header)
-            next_line = next(order_generator)
-            next_order = Order(next_line, self.threadID) 
-            stop = self.inventory.place(next_order, self.threadID)
-            self.header += 1  
-            if stop:
-                break             
            
 
 # Helpers
@@ -228,11 +214,6 @@ def getArgs():
                         type = 'string',
                         help = "Read orders from path, default %default",
                         default = '')
-        #parser.add_option('--random', 
-        #                dest = 'random', 
-        ##                action="store_true",
-        #                help = "Randomly generate orders, default %default",
-        #                default = True) 
         parser.add_option('--streams', 
                         dest = 'streams', 
                         type = 'int',
