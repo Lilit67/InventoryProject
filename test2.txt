@@ -1,5 +1,4 @@
-
-{'Header': 1, "Lines": {"A": "4", "C": "2", 'B': 3}}
-{'Header': 2, "Lines": {"D": "4", "E": "2", 'B': 0}}
-{'Header': 3, "Lines": {"A": "4", "C": "2", 'B': 3}}
-{'Header': 4, "Lines": {"A": "4", "C": "2", 'B': 3}}
+{'Header': 1, "Lines": {'A': 4, 'B': 2, 'C': 2}}
+{'Header': 2, "Lines": {'B': 0, "D": "4", "E": "2"}}
+{'Header': 3, "Lines": {"A": "4", 'B': 3, "C": "2"}}
+{'Header': 4, "Lines": {"A": "4", 'B': 3, "C": "2"}}

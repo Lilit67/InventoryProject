@@ -6,9 +6,9 @@ import traceback
 import json
 import random
 import logging
+from time import gmtime, strftime
 from collections import OrderedDict
 from optparse import OptionParser
-
 
 
 threadLock = threading.Lock()
@@ -29,9 +29,13 @@ class Inventory(object):
         set up initial inventory
         initialize data structures
         '''
-        self.inventory = inventory    
+        logging.debug(strftime("%a, %d %b %Y %H:%M:%S +0000", gmtime()))
+        self.inventory = inventory
+        self.backlogs = {'A':0, 'B':0, 'C':0, 'D':0, 'E':0}
+
         self.orders = []
         self.counter = 0
+        logging.debug('Initial Inventory: %s', self.inventory)
         
 
     def place(self, order, streamID):
@@ -45,42 +49,44 @@ class Inventory(object):
         with threadLock:    
             if self.checkToHalt():   
                 return True
-            logging.debug('Thread No: ' + str(streamID))
-            logging.debug("Inventory AFTER release of order #" + \
+            logging.debug('Thread No: %s' % streamID)
+            logging.debug("Inventory BEFORE release of order #" + \
                 str(order.header) + ' ' + str(self.inventory))
             logging.debug("Requested " + str(order.initial))
 
             self.orders.append(order)
             for product in order.initial.keys():           
                 remainder = self.inventory[product] - order.initial[product]
-
+                logging.debug('remainder ' + str(remainder))
                 if  remainder >= 0:
             	    self.inventory[product] = remainder
             	    order.final[product] = order.initial[product]
 
                 else:
                     order.backlog[product] = order.backlog[product] + \
-                    order.initial[product] 
+                    order.initial[product]
+                    self.inventory[product] = 0
+                self.backlogs[product] += remainder
 
             logging.debug("Inventory AFTER release of order #" + \
                 str(order.header) + ' ' + str(self.inventory))   	        
            
 
     def checkToHalt(self):
-            '''
-            The program should stop 
-            once no more inventory
-            '''  
-            values = []
-            for v in self.inventory.values():
-                if v == 0:
-                    values.append(v)
-            if values == [0,0,0,0,0]:
-                
-                logging.debug('HALTING SYSTEM')
+        '''
+        The program should stop 
+        once no more inventory
+        '''  
+        values = []
+        for v in self.inventory.values():
+            if v == 0:
+                values.append(v)
 
-                return True
-            return False    
+        if values == [0,0,0,0,0]:   
+            logging.debug('HALTING SYSTEM')
+            return True
+
+        return False    
 
 
     def prettyPrint(self):
@@ -106,6 +112,7 @@ class Order(object):
         self.final    = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0}
         self.backlog  = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0}   
 
+
         for l in order['Lines'].keys():
            	self.initial[l] = int(order['Lines'][l])
           
@@ -116,17 +123,17 @@ class Order(object):
         @ output: print format- before, after, backlog:
         1: 1,0,1,0,0::1,0,1,0,0::0,0,0,0,0
         
-        '''   
-        initial = ''
-        final   = ''
-        backlog = ''
-        for p in self.products:
-            initial = initial + str(self.initial[p]) + ','
-            final = final + str(self.final[p]) + ','
-            backlog = backlog + str(self.backlog[p]) + ','
+        '''  
+        init = [str(value) for (key, value) in sorted(self.initial.items())]
+        fin = [str(value) for (key, value) in sorted(self.final.items())]
+        back = [str(value) for (key, value) in sorted(self.backlog.items())]
 
-        line = str(self.strm) + ': ' + str(self.header) + ': ' + str(initial) + '::' \
-            + str(final) + '::' + str(backlog)
+        initial = ','.join(init)
+        final = ','.join(fin)
+        backlog = ','.join(back)
+
+        line = ''.join([self.strm, ': ', str(self.header), ': ' , 
+            str(initial), '::',str(final), '::', str(backlog)])
         
         print(line)   
 
@@ -142,21 +149,22 @@ class Order(object):
         order['Header'] = 0
         order['Lines'] = OrderedDict()
         if not isinstance(ordr, dict):
-        	return None
+            logging.warning("Incorrect format for input, should be dictionary %s", ordr)
+            return None
         
         order['Header'] = ordr['Header']
 
         if not 'Lines' in ordr:
-        	logging.debug('Malformed order description, missing entry: "Lines"')
+        	logging.warning('Malformed order description, missing entry: "Lines"')
         	return None
 
         for i in ordr['Lines'].keys():
-            if i not in ['A','B', 'C', 'D', 'E']:
-        	    logging.debug('Incorrect product name in input # ' + \
+            if i not in Products:
+        	    logging.warning('Incorrect product name in input # ' + \
                     str(i['Header']) + ' ' + str(i))
             elif int(ordr['Lines'][i]) <=0 or int(ordr['Lines'][i]) > 5:
-                logging.debug('Incorrect order value for product ' + str(i) + \
-                    '  ' + str(ordr['Lines'][i]) )
+                logging.warning('Incorrect order will be rejected ' + \
+                    i + ': ' + str(ordr['Lines'][i]) )
             else:
             	order['Lines'][i] = int(ordr['Lines'][i])
         return order	
@@ -166,7 +174,7 @@ class Stream(threading.Thread):
     def __init__(self, TID, name, inventory):
         threading.Thread.__init__(self)
         self.threadID = TID
-        self.name = name
+        self.name = str(name)
         self.header = 1
         self.inventory = inventory
 
@@ -219,6 +227,11 @@ def getArgs():
                         type = 'int',
                         help = "Number of streams placing orders, default %default",
                         default = 1)
+        parser.add_option('--debug', '-g',
+                        dest = 'debug', 
+                        action = 'store_true',
+                        help = "Output debug into debug.log, default %default",
+                        default = False)
         (opts, args) = parser.parse_args()
 
         logging.debug('Command-line arguments: ' + str(opts))
@@ -273,9 +286,30 @@ def main():
         (opts, args) = getArgs() 
         invent = Inventory(getInventory(opts.inventory))
 
+        '''
+        # set up logging, unfortunately cannot make it work from here
+        if opts.debug:
+            lvl = logging.DEBUG
+        else:
+            lvl = logging.NOTSET
+
+        logging.basicConfig(filename='debug.log',mode='w', level=logging.DEBUG)
+        
+        fh = logging.FileHandler('debug.log', mode='w', delay=True)        
+ 
+        logger.addHandler(fh)
+        logger.debug('DEBUG')
+        logger.warning('WARNING')
+        logger.info('INFO')
+        logger.error('ERROR')
+        logger.critical('CRITICAL')
+
+        print (opts)
+        '''
+
         # this option is only for testing purposes
         # having hard coded input 
-        # seems easier to track. 
+        # runs only for one stream for now
         if len(opts.orders):
             streams = 1
             random = False
@@ -303,8 +337,7 @@ def main():
         # no much sense to have 10 files if we want 10 streams 
         # System will stop when no inventory is left 
 
-        else:    
-            
+        else:                
             streams = range(1, opts.streams + 1) 
             threads = []
 
@@ -316,8 +349,6 @@ def main():
 
             for t in threads:
                 t.join()                 
-
-
         
         invent.prettyPrint()            
 
